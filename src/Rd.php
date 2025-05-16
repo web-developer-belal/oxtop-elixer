@@ -1,9 +1,8 @@
 <?php
-
 namespace Oxtop\Elixer;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 
 class Rd
 {
@@ -14,10 +13,10 @@ class Rd
 
     public function a5()
     {
-        $a6 = request()->getHost();
-        $a7 = $this->a8();
-        $a9 = $a7['u'] ?? null;
-        $b1 = $a7['k'] ?? null;
+        $a6     = request()->getHost();
+        $a7     = $this->a8();
+        $a9     = $a7['u'] ?? null;
+        $b1     = $a7['k'] ?? null;
         $status = $a7['s'] ?? null;
         if ($this->b2() && $status === 'valid') {
             return;
@@ -26,23 +25,25 @@ class Rd
         $b3 = $this->b4($a6, $a9, $b1);
 
         if ($b3) {
-            $b5 = $b3->json('status');
-            $b6 = $b3->json('data', []);
+            $fullResponse = $b3->json();
+            $status       = $fullResponse['status'] ?? null;
+            $data         = $fullResponse['data'] ?? [];
 
-            if ($b5 === 'success') {
+            if ($status === 'success') {
                 $this->b7('valid', $a9, $b1);
-            } elseif ($b5 === 'retry') {
-                $this->b7('retry', $b6['uid'] ?? null, $b6['key'] ?? null);
-            } elseif ($b5 === 'fail') {
+            } elseif ($status === 'retry') {
+                $this->b7('retry', $data['uid'] ?? null, $data['key'] ?? null);
+            } elseif ($status === 'fail') {
                 $this->b7('invalid');
-                $this->b8($b6);
-            } elseif ($b5 === 'stop') {
+                $this->b8($fullResponse);
+            } elseif ($status === 'stop') {
                 die(0);
             } else {
                 $this->b7('invalid');
-                $this->b8($b6);
+                $this->b8($fullResponse);
             }
         }
+
     }
 
     protected function b4($a6, $a9, $b1)
@@ -50,8 +51,8 @@ class Rd
         try {
             $b9 = Http::post($this->c1(), [
                 'domain' => $a6,
-                'uid' => $a9,
-                'key' => $b1,
+                'uid'    => $a9,
+                'key'    => $b1,
             ]);
 
             if ($b9->successful()) {
