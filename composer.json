@@ -1,0 +1,12 @@
+{
+    "name": "oxtop/elixer",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Oxtop\\Elixer\\": "src/"
+        }
+    },
+    "minimum-stability": "dev",
+    "require": {}
+}
