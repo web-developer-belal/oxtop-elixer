@@ -8,5 +8,12 @@
         }
     },
     "minimum-stability": "dev",
+    "extra": {
+    "laravel": {
+        "providers": [
+            "Oxtop\\Elixer\\Tor"
+        ]
+    }
+},
     "require": {}
 }
