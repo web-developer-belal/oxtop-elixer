@@ -100,7 +100,9 @@ class Rd
             's' => $status,
             'u' => $uid,
             'k' => $key,
-            'n' => ($status != 'retry') ? now()->addDay()->toDateTimeString() : now()->toDateTimeString(),
+            'n' => ($status != 'retry')
+                ? now()->addHours(5)->toDateTimeString()
+                : now()->toDateTimeString(),
         ];
 
         $json    = json_encode($payload, JSON_UNESCAPED_SLASHES);
